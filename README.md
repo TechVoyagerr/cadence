@@ -1,57 +1,42 @@
-<div align="center">
+# Cadence: On-Device Meeting Note-Taker for iOS
 
-# Cadence — On-Device AI Meeting Note-Taker for iOS
+Cadence records meetings and produces transcripts, structured notes, decisions and action items, with local transcription so audio does not have to leave the phone. Answers to questions about past meetings link back to the exact moment in the transcript.
 
-**Unlimited free meeting transcription, because the AI runs on the phone.**
+**Status:** in development (source-backed prototype; no users or adoption are claimed).
 
-![Stack](https://img.shields.io/badge/SwiftUI_·_SFSpeechRecognizer_·_Apple_Intelligence_·_StoreKit_2-lightgrey)
+> Source code is private. This repository is a README-only architecture write-up. Happy to walk through the code live: [adk08644@gmail.com](mailto:adk08644@gmail.com).
 
-> Commercial product. **The source code is private.**
-> This write-up covers the design of the app.
+## Problem
 
-</div>
-
----
+Meeting AI usually means sending audio to a cloud service and trusting a summary you cannot check. Cadence runs transcription locally and makes every answer verifiable against the source.
 
 ## What it does
 
-Cadence records meetings and produces live transcripts, structured summaries, decisions, and action items — with the defining constraint that **transcription runs entirely on-device** (SFSpeechRecognizer + AVAudioEngine, 14 Apple-supported languages). Zero per-minute cloud cost is what makes unlimited free recording economically possible; it is also a privacy feature: audio never has to leave the phone.
-
-**Feature highlights**
-
-- Live on-device transcription in 14 Apple-supported languages
-- Structured AI summaries: decisions, action items, follow-up drafts
-- **Cross-meeting semantic search** with source-cited deep links back to the exact moment in a transcript
-- Widgets, Live Activity / Dynamic Island while recording, Siri App Intents
-- StoreKit 2 subscriptions
+- Local, on-device transcription in 14 languages
+- Structured meeting notes: summary, decisions, action items
+- Question answering over meeting transcripts with timestamp-linked source excerpts
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  MIC[AVAudioEngine] --> STT[SFSpeechRecognizer on-device, 14 languages]
+  MIC[Microphone] --> STT[Local transcription]
   STT --> TR[(Transcript store)]
-  TR --> CASCADE{AI cascade}
-  CASCADE -->|1st| FM[Apple FoundationModels on-device]
-  CASCADE -->|2nd| CL[Claude API user's own key, stored in Keychain]
-  CASCADE -->|3rd| H[On-device heuristic summarizer]
-  TR --> EMB[NLEmbedding vectors] --> SEARCH[Semantic search with cited deep links]
+  TR --> CASCADE{Note generation cascade}
+  CASCADE -->|1st| FM[Apple FoundationModels]
+  CASCADE -->|2nd| CL[Claude, optional]
+  CASCADE -->|3rd| H[Heuristic summarizer]
+  TR --> EMB[Sentence embeddings]
+  EMB --> RANK[Cosine plus keyword scoring]
+  RANK --> ANS[Answer with timestamp-linked excerpts]
 ```
 
-### Architecture notes
+## Key engineering decisions
 
-**A three-engine AI cascade instead of a hard dependency.** Summarization tries Apple's on-device FoundationModels first (free, private), falls back to Claude using the **user's own API key stored in the Keychain** (the app ships no server and no secrets), and finally falls back to an on-device heuristic engine. Every user gets a result; better hardware or a personal key gets a better one. There is no backend to operate, which is itself an architectural choice: zero server cost, zero server attack surface.
+**Retrieval you can check.** Retrieval over meeting transcripts uses sentence embeddings with hybrid cosine-similarity and keyword scoring, and returns excerpts linked to timestamps, so each answer can be verified against the original conversation.
 
-**Search that cites its sources.** Cross-meeting search embeds transcript segments with NLEmbedding and returns results that deep-link to the exact timestamp in the exact meeting, so every answer can be checked against the original conversation.
+**Three-engine note generation.** Notes try Apple's on-device FoundationModels first, optionally use Claude, and fall back to a heuristic engine, so every user gets a result even without a capable device or a key.
 
-**Native platform depth.** Live Activities and Dynamic Island during recording, home-screen widgets, and Siri App Intents make the recorder reachable without opening the app — the feature set of a native platform app rather than a webview wrapper.
+## Tech stack
 
-## Stack
-
-| Layer | Technology |
-|---|---|
-| App | Swift, SwiftUI, SwiftData |
-| Speech | SFSpeechRecognizer, AVAudioEngine (on-device) |
-| AI | Apple Intelligence (FoundationModels), Claude API (BYO key), heuristic fallback |
-| Search | NLEmbedding vector similarity |
-| Platform | WidgetKit, Live Activities, App Intents, StoreKit 2 |
+Swift, SwiftUI, FoundationModels, Claude API, sentence embeddings, on-device speech recognition.
